@@ -1,0 +1,82 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String        @id @default(uuid())
+  email          String        @unique
+  name           String
+  password       String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  profileImage   String?
+  products       Product[]     @relation("UserProducts")
+  bids           Bid[]
+  wallet         Wallet?
+  transactions   Transaction[]
+  wonAuctions    Product[]     @relation("AuctionWinner")
+}
+
+model Product {
+  id               String    @id @default(uuid())
+  title            String
+  description      String
+  images           String[]
+  startingPrice    Float
+  currentPrice     Float
+  startTime        DateTime  @default(now())
+  endTime          DateTime
+  status           String    @default("ACTIVE") // ACTIVE, ENDED, CANCELLED
+  sellerId         String
+  seller           User      @relation("UserProducts", fields: [sellerId], references: [id])
+  winnerId         String?
+  winner           User?     @relation("AuctionWinner", fields: [winnerId], references: [id])
+  bids             Bid[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  category         String
+  condition        String
+  aiVerified       Boolean   @default(false)
+  aiVerificationId String?
+}
+
+model Bid {
+  id        String   @id @default(uuid())
+  amount    Float
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+}
+
+model Wallet {
+  id           String        @id @default(uuid())
+  balance      Float         @default(0)
+  userId       String        @unique
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  amount      Float
+  type        String // DEPOSIT, WITHDRAWAL, BID, REFUND
+  description String
+  createdAt   DateTime @default(now())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  walletId    String
+  wallet      Wallet   @relation(fields: [walletId], references: [id])
+  productId   String?
+}
