@@ -15,6 +15,7 @@ import { verifyProductWithAI } from "@/app/actions/ai-verification-actions"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, Upload, Check, AlertTriangle } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 
 export default function SellForm() {
   const router = useRouter()
@@ -26,6 +27,8 @@ export default function SellForm() {
   const [selectedImages, setSelectedImages] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [useAIVerification, setUseAIVerification] = useState(true)
+  const [durationType, setDurationType] = useState("days")
+  const [durationValue, setDurationValue] = useState(7)
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -112,6 +115,8 @@ export default function SellForm() {
 
     const formData = new FormData(e.target as HTMLFormElement)
     formData.append("aiVerified", isVerified.toString())
+    formData.append("durationType", durationType)
+    formData.append("durationValue", durationValue.toString())
 
     // Add images to form data
     selectedImages.forEach((image) => {
@@ -137,6 +142,25 @@ export default function SellForm() {
     }
   }
 
+  const getDurationHelperText = () => {
+    const now = new Date()
+    const endDate = new Date()
+
+    switch (durationType) {
+      case "hours":
+        endDate.setHours(now.getHours() + durationValue)
+        break
+      case "days":
+        endDate.setDate(now.getDate() + durationValue)
+        break
+      case "weeks":
+        endDate.setDate(now.getDate() + durationValue * 7)
+        break
+    }
+
+    return `Auction will end on ${endDate.toLocaleDateString()} at ${endDate.toLocaleTimeString()}`
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       <div className="grid gap-6 md:grid-cols-2">
@@ -157,9 +181,12 @@ export default function SellForm() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="startingPrice">Starting Price ($)</Label>
+          <div className="space-y-2">
+            <Label htmlFor="startingPrice">Starting Price ($)</Label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <span className="text-gray-500">$</span>
+              </div>
               <Input
                 id="startingPrice"
                 name="startingPrice"
@@ -167,14 +194,47 @@ export default function SellForm() {
                 min="1"
                 step="0.01"
                 placeholder="0.00"
+                className="pl-7"
                 required
               />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="duration">Duration (days)</Label>
-              <Input id="duration" name="duration" type="number" min="1" max="30" placeholder="7" required />
+          <div className="space-y-2">
+            <Label>Auction Duration</Label>
+            <RadioGroup
+              defaultValue="days"
+              className="flex space-x-4 mb-2"
+              value={durationType}
+              onValueChange={setDurationType}
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="hours" id="hours" />
+                <Label htmlFor="hours">Hours</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="days" id="days" />
+                <Label htmlFor="days">Days</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="weeks" id="weeks" />
+                <Label htmlFor="weeks">Weeks</Label>
+              </div>
+            </RadioGroup>
+
+            <div className="flex items-center gap-4">
+              <Input
+                type="number"
+                min={durationType === "hours" ? 1 : 1}
+                max={durationType === "hours" ? 72 : durationType === "days" ? 30 : 8}
+                value={durationValue}
+                onChange={(e) => setDurationValue(Number.parseInt(e.target.value) || 1)}
+                className="w-24"
+              />
+              <span className="text-sm text-muted-foreground">{durationType}</span>
             </div>
+
+            <p className="text-xs text-muted-foreground">{getDurationHelperText()}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

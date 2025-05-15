@@ -6,9 +6,10 @@ import { Clock } from "lucide-react"
 
 interface AuctionTimerProps {
   endTime: Date
+  status?: string
 }
 
-export default function AuctionTimer({ endTime }: AuctionTimerProps) {
+export default function AuctionTimer({ endTime, status }: AuctionTimerProps) {
   const [timeLeft, setTimeLeft] = useState(calculateTimeLeft(endTime))
 
   useEffect(() => {
@@ -19,7 +20,7 @@ export default function AuctionTimer({ endTime }: AuctionTimerProps) {
     return () => clearInterval(timer)
   }, [endTime])
 
-  if (timeLeft.isEnded) {
+  if (status === "ENDED" || timeLeft.isEnded) {
     return (
       <div className="bg-red-100 dark:bg-red-900/20 p-3 rounded-lg flex items-center justify-center text-red-600 dark:text-red-400">
         <Clock className="h-5 w-5 mr-2" />

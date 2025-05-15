@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { formatCurrency, calculateTimeLeft } from "@/lib/utils"
 import { Clock, Tag, User } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 interface ProductCardProps {
   product: any
@@ -9,6 +10,7 @@ interface ProductCardProps {
 
 export default function ProductCard({ product }: ProductCardProps) {
   const timeLeft = calculateTimeLeft(product.endTime)
+  const isEnded = timeLeft.isEnded || product.status === "ENDED"
 
   return (
     <Card className="overflow-hidden">
@@ -20,6 +22,13 @@ export default function ProductCard({ product }: ProductCardProps) {
         />
         {product.aiVerified && (
           <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded text-xs">AI Verified</div>
+        )}
+        {isEnded && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <Badge variant="destructive" className="text-sm">
+              Auction Ended
+            </Badge>
+          </div>
         )}
       </div>
       <CardContent className="p-4">
@@ -37,7 +46,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           </div>
           <div className="flex items-center text-sm text-muted-foreground">
             <Clock className="h-4 w-4 mr-1" />
-            {timeLeft.isEnded ? (
+            {isEnded ? (
               <span className="text-red-500">Ended</span>
             ) : (
               <span>

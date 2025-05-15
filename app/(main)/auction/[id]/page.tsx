@@ -8,6 +8,7 @@ import BidForm from "@/components/bid-form"
 import AuctionTimer from "@/components/auction-timer"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import EndAuctionButton from "@/components/end-auction-button"
 
 export default async function AuctionPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -20,6 +21,7 @@ export default async function AuctionPage({ params }: { params: { id: string } }
   const timeLeft = calculateTimeLeft(product.endTime)
   const isOwner = session?.user?.id === product.sellerId
   const isEnded = timeLeft.isEnded || product.status !== "ACTIVE"
+  const hasBids = product.bids.length > 0
 
   return (
     <div className="container py-8">
@@ -54,6 +56,7 @@ export default async function AuctionPage({ params }: { params: { id: string } }
               <Badge>{product.category}</Badge>
               <Badge variant="outline">{product.condition}</Badge>
               {product.aiVerified && <Badge variant="secondary">AI Verified</Badge>}
+              {product.status === "ENDED" && <Badge variant="destructive">Ended</Badge>}
             </div>
             <h1 className="text-3xl font-bold">{product.title}</h1>
             <p className="text-muted-foreground">Sold by {product.seller.name}</p>
@@ -72,7 +75,7 @@ export default async function AuctionPage({ params }: { params: { id: string } }
                 </div>
               </div>
 
-              <AuctionTimer endTime={product.endTime} />
+              <AuctionTimer endTime={product.endTime} status={product.status} />
 
               {!isEnded && !isOwner && session?.user && (
                 <BidForm productId={product.id} currentPrice={product.currentPrice} />
@@ -89,10 +92,18 @@ export default async function AuctionPage({ params }: { params: { id: string } }
                 </div>
               )}
 
-              {isOwner && (
+              {isOwner && !isEnded && <EndAuctionButton productId={product.id} hasBids={hasBids} />}
+
+              {isOwner && isEnded && (
                 <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg text-center">
-                  <p className="font-medium">This is your auction</p>
-                  <p className="text-sm text-muted-foreground mt-1">You cannot bid on your own auction</p>
+                  <p className="font-medium">You ended this auction</p>
+                  {product.winnerId ? (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Winner: {product.bids[0]?.user.name || "Unknown"}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground mt-1">No bids were placed</p>
+                  )}
                 </div>
               )}
 
@@ -119,6 +130,24 @@ export default async function AuctionPage({ params }: { params: { id: string } }
             <TabsContent value="details" className="mt-4">
               <div className="prose dark:prose-invert max-w-none">
                 <p>{product.description}</p>
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="font-semibold">Start Time</p>
+                    <p>{new Date(product.startTime).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">End Time</p>
+                    <p>{new Date(product.endTime).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Starting Price</p>
+                    <p>{formatCurrency(product.startingPrice)}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Current Price</p>
+                    <p>{formatCurrency(product.currentPrice)}</p>
+                  </div>
+                </div>
               </div>
             </TabsContent>
             <TabsContent value="bids" className="mt-4">

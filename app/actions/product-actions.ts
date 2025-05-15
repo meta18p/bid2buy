@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { revalidatePath } from "next/cache"
 
+// Modify the createProduct function to support custom durations
 export async function createProduct(formData: FormData) {
   const session = await getServerSession(authOptions)
 
@@ -18,14 +19,23 @@ export async function createProduct(formData: FormData) {
   const description = formData.get("description") as string
   const startingPriceStr = formData.get("startingPrice") as string
   const startingPrice = Number.parseFloat(startingPriceStr)
-  const durationStr = formData.get("duration") as string
-  const duration = Number.parseInt(durationStr)
+  const durationTypeStr = formData.get("durationType") as string
+  const durationValueStr = formData.get("durationValue") as string
+  const durationValue = Number.parseInt(durationValueStr)
   const category = formData.get("category") as string
   const condition = formData.get("condition") as string
   const images = formData.getAll("images") as File[]
   const aiVerified = formData.get("aiVerified") as string
 
-  if (!title || !description || isNaN(startingPrice) || isNaN(duration) || !category || !condition) {
+  if (
+    !title ||
+    !description ||
+    isNaN(startingPrice) ||
+    !durationTypeStr ||
+    isNaN(durationValue) ||
+    !category ||
+    !condition
+  ) {
     return {
       error: "All fields are required",
     }
@@ -37,16 +47,29 @@ export async function createProduct(formData: FormData) {
     }
   }
 
-  if (duration <= 0) {
+  if (durationValue <= 0) {
     return {
       error: "Duration must be greater than 0",
     }
   }
 
   try {
-    // Calculate end time
+    // Calculate end time based on duration type and value
     const endTime = new Date()
-    endTime.setDate(endTime.getDate() + duration)
+
+    switch (durationTypeStr) {
+      case "hours":
+        endTime.setHours(endTime.getHours() + durationValue)
+        break
+      case "days":
+        endTime.setDate(endTime.getDate() + durationValue)
+        break
+      case "weeks":
+        endTime.setDate(endTime.getDate() + durationValue * 7)
+        break
+      default:
+        endTime.setDate(endTime.getDate() + durationValue) // Default to days
+    }
 
     // Create product
     const product = await prisma.product.create({
@@ -357,5 +380,122 @@ export async function getUserBids() {
   } catch (error) {
     console.error("Get user bids error:", error)
     return []
+  }
+}
+
+// Add a new action to end an auction prematurely
+export async function endAuctionEarly(productId: string) {
+  const session = await getServerSession(authOptions)
+
+  if (!session?.user?.id) {
+    return {
+      error: "You must be logged in to end an auction",
+    }
+  }
+
+  try {
+    // Get the product
+    const product = await prisma.product.findUnique({
+      where: {
+        id: productId,
+      },
+      include: {
+        bids: {
+          orderBy: {
+            amount: "desc",
+          },
+          take: 1,
+        },
+      },
+    })
+
+    if (!product) {
+      return {
+        error: "Product not found",
+      }
+    }
+
+    if (product.sellerId !== session.user.id) {
+      return {
+        error: "You can only end your own auctions",
+      }
+    }
+
+    if (product.status !== "ACTIVE") {
+      return {
+        error: "This auction has already ended",
+      }
+    }
+
+    // Determine the winner (highest bidder)
+    const winnerId = product.bids.length > 0 ? product.bids[0].userId : null
+
+    // Update the product status
+    await prisma.product.update({
+      where: {
+        id: productId,
+      },
+      data: {
+        status: "ENDED",
+        winnerId,
+      },
+    })
+
+    // Process refunds for non-winning bidders if there are bids
+    if (product.bids.length > 0) {
+      // Get all bids except the winning bid
+      const nonWinningBids = await prisma.bid.findMany({
+        where: {
+          productId,
+          userId: {
+            not: winnerId,
+          },
+        },
+        include: {
+          user: {
+            include: {
+              wallet: true,
+            },
+          },
+        },
+      })
+
+      // Process refunds
+      for (const bid of nonWinningBids) {
+        if (bid.user.wallet) {
+          const refundAmount = bid.amount * 0.5 // 50% of bid amount was held
+
+          await prisma.wallet.update({
+            where: {
+              id: bid.user.wallet.id,
+            },
+            data: {
+              balance: {
+                increment: refundAmount,
+              },
+              transactions: {
+                create: {
+                  amount: refundAmount,
+                  type: "REFUND",
+                  description: `Refund for bid on ${product.title}`,
+                  userId: bid.userId,
+                  productId,
+                },
+              },
+            },
+          })
+        }
+      }
+    }
+
+    revalidatePath(`/auction/${productId}`)
+    return {
+      success: "Auction ended successfully",
+    }
+  } catch (error) {
+    console.error("End auction error:", error)
+    return {
+      error: "An error occurred while ending the auction",
+    }
   }
 }

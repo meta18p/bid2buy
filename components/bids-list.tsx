@@ -44,7 +44,7 @@ export default function BidsList({ bids }: BidsListProps) {
         <TableBody>
           {bids.map((bid) => {
             const isWinning = bid.product.currentPrice === bid.amount
-            const isEnded = new Date(bid.product.endTime) < new Date()
+            const isEnded = new Date(bid.product.endTime) < new Date() || bid.product.status === "ENDED"
             const status = getBidStatus(bid, isWinning, isEnded)
 
             return (
@@ -80,7 +80,7 @@ function getBidStatus(bid: Bid, isWinning: boolean, isEnded: boolean) {
 function getBadgeVariant(status: string) {
   switch (status) {
     case "Won":
-      return "success"
+      return "default"
     case "Winning":
       return "default"
     case "Outbid":
