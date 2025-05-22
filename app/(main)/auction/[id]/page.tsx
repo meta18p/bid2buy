@@ -9,6 +9,7 @@ import AuctionTimer from "@/components/auction-timer"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import EndAuctionButton from "@/components/end-auction-button"
+import { CheckCircle2, Video } from "lucide-react"
 
 export default async function AuctionPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -22,22 +23,34 @@ export default async function AuctionPage({ params }: { params: { id: string } }
   const isOwner = session?.user?.id === product.sellerId
   const isEnded = timeLeft.isEnded || product.status !== "ACTIVE"
   const hasBids = product.bids.length > 0
+  const hasVideo = product.mediaType === "video"
 
   return (
     <div className="container py-8">
       <div className="grid gap-8 md:grid-cols-2">
         <div>
-          <div className="aspect-square overflow-hidden rounded-lg mb-4">
-            <img
-              src={product.images[0] || "/placeholder.svg?height=600&width=600"}
-              alt={product.title}
-              className="object-cover w-full h-full"
-            />
-          </div>
+          {hasVideo ? (
+            <div className="aspect-video overflow-hidden rounded-lg mb-4">
+              <video
+                src={product.videoUrl || "/placeholder.mp4"}
+                className="w-full h-full object-cover"
+                controls
+                poster={product.images[0] || "/placeholder.svg?height=600&width=600"}
+              />
+            </div>
+          ) : (
+            <div className="aspect-square overflow-hidden rounded-lg mb-4">
+              <img
+                src={product.images[0] || "/placeholder.svg?height=600&width=600"}
+                alt={product.title}
+                className="object-cover w-full h-full"
+              />
+            </div>
+          )}
 
-          {product.images.length > 1 && (
+          {!hasVideo && product.images.length > 1 && (
             <div className="grid grid-cols-4 gap-2">
-              {product.images.map((image, index) => (
+              {product.images.map((image: string, index: number) => (
                 <div key={index} className="aspect-square overflow-hidden rounded-lg">
                   <img
                     src={image || `/placeholder.svg?height=150&width=150&text=Image ${index + 1}`}
@@ -55,7 +68,18 @@ export default async function AuctionPage({ params }: { params: { id: string } }
             <div className="flex items-center gap-2 mb-2">
               <Badge>{product.category}</Badge>
               <Badge variant="outline">{product.condition}</Badge>
-              {product.aiVerified && <Badge variant="secondary">AI Verified</Badge>}
+              {product.aiVerified && (
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Verified
+                </Badge>
+              )}
+              {hasVideo && (
+                <Badge variant="outline" className="flex items-center gap-1">
+                  <Video className="h-3 w-3" />
+                  Video
+                </Badge>
+              )}
               {product.status === "ENDED" && <Badge variant="destructive">Ended</Badge>}
             </div>
             <h1 className="text-3xl font-bold">{product.title}</h1>
@@ -153,7 +177,7 @@ export default async function AuctionPage({ params }: { params: { id: string } }
             <TabsContent value="bids" className="mt-4">
               {product.bids.length > 0 ? (
                 <div className="space-y-2">
-                  {product.bids.map((bid) => (
+                  {product.bids.map((bid: any) => (
                     <div key={bid.id} className="flex justify-between p-3 border rounded-lg">
                       <div>
                         <p className="font-medium">{bid.user.name}</p>

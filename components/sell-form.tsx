@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,9 +13,12 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createProduct } from "@/app/actions/product-actions"
 import { verifyProductWithAI } from "@/app/actions/ai-verification-actions"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Upload, Check, AlertTriangle } from "lucide-react"
+import { Loader2, Upload, Check, AlertTriangle, Video, ImageIcon, X } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Progress } from "@/components/ui/progress"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { verifyProductVideo } from "@/app/actions/video-verification-actions"
 
 export default function SellForm() {
   const router = useRouter()
@@ -25,10 +28,19 @@ export default function SellForm() {
   const [isVerified, setIsVerified] = useState(false)
   const [verificationResult, setVerificationResult] = useState<any>(null)
   const [selectedImages, setSelectedImages] = useState<File[]>([])
+  const [selectedVideo, setSelectedVideo] = useState<File | null>(null)
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null)
   const [useAIVerification, setUseAIVerification] = useState(true)
   const [durationType, setDurationType] = useState("days")
   const [durationValue, setDurationValue] = useState(7)
+  const [mediaType, setMediaType] = useState<"image" | "video">("image")
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [verificationStatus, setVerificationStatus] = useState<
+    "idle" | "uploading" | "processing" | "success" | "error"
+  >("idle")
+  const [verificationMessage, setVerificationMessage] = useState("")
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -41,8 +53,123 @@ export default function SellForm() {
     }
   }
 
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0]
+      setSelectedVideo(file)
+
+      // Create preview URL
+      const url = URL.createObjectURL(file)
+      setVideoPreviewUrl(url)
+    }
+  }
+
+  const removeVideo = () => {
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl)
+    }
+    setSelectedVideo(null)
+    setVideoPreviewUrl(null)
+    setVerificationStatus("idle")
+    setVerificationMessage("")
+    setIsVerified(false)
+  }
+
+  const removeImage = (index: number) => {
+    const newImages = [...selectedImages]
+    const newUrls = [...previewUrls]
+
+    // Revoke the URL to prevent memory leaks
+    URL.revokeObjectURL(newUrls[index])
+
+    newImages.splice(index, 1)
+    newUrls.splice(index, 1)
+
+    setSelectedImages(newImages)
+    setPreviewUrls(newUrls)
+  }
+
+  const simulateProgress = () => {
+    setUploadProgress(0)
+    const interval = setInterval(() => {
+      setUploadProgress((prev) => {
+        if (prev >= 95) {
+          clearInterval(interval)
+          return prev
+        }
+        return prev + 5
+      })
+    }, 200)
+
+    return () => clearInterval(interval)
+  }
+
+  const verifyVideo = async () => {
+    if (!selectedVideo) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please upload a video to verify",
+      })
+      return
+    }
+
+    setVerificationStatus("uploading")
+    setIsVerifying(true)
+    const stopProgress = simulateProgress()
+
+    try {
+      // Create a FormData object to send the video
+      const formData = new FormData()
+      formData.append("video", selectedVideo)
+
+      setVerificationStatus("processing")
+
+      // Call the verification API
+      const result = await verifyProductVideo(formData)
+
+      setUploadProgress(100)
+
+      if (result.isVerified) {
+        setVerificationStatus("success")
+        setVerificationMessage(result.message || "Video verification successful!")
+        setIsVerified(true)
+        toast({
+          title: "Verification successful",
+          description: "Your product has been verified by our system",
+        })
+      } else {
+        setVerificationStatus("error")
+        setVerificationMessage(result.message || "Video verification failed. Please try again.")
+        setIsVerified(false)
+        toast({
+          variant: "destructive",
+          title: "Verification failed",
+          description: result.message || "Your product did not pass verification",
+        })
+      }
+    } catch (error) {
+      console.error("Verification error:", error)
+      setVerificationStatus("error")
+      setVerificationMessage("An error occurred during verification. Please try again.")
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An error occurred during verification",
+      })
+    } finally {
+      stopProgress()
+      setIsVerifying(false)
+    }
+  }
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (mediaType === "video") {
+      await verifyVideo()
+      return
+    }
 
     if (!selectedImages.length) {
       toast({
@@ -106,7 +233,7 @@ export default function SellForm() {
       toast({
         variant: "destructive",
         title: "Verification required",
-        description: "Please verify your product with AI before submitting",
+        description: "Please verify your product before submitting",
       })
       return
     }
@@ -117,11 +244,16 @@ export default function SellForm() {
     formData.append("aiVerified", isVerified.toString())
     formData.append("durationType", durationType)
     formData.append("durationValue", durationValue.toString())
+    formData.append("mediaType", mediaType)
 
     // Add images to form data
-    selectedImages.forEach((image) => {
-      formData.append("images", image)
-    })
+    if (mediaType === "image") {
+      selectedImages.forEach((image) => {
+        formData.append("images", image)
+      })
+    } else if (mediaType === "video" && selectedVideo) {
+      formData.append("video", selectedVideo)
+    }
 
     const result = await createProduct(formData)
 
@@ -159,6 +291,35 @@ export default function SellForm() {
     }
 
     return `Auction will end on ${endDate.toLocaleDateString()} at ${endDate.toLocaleTimeString()}`
+  }
+
+  const getVerificationStatusText = () => {
+    switch (verificationStatus) {
+      case "uploading":
+        return "Uploading video..."
+      case "processing":
+        return "Processing verification..."
+      case "success":
+        return verificationMessage || "Verification successful!"
+      case "error":
+        return verificationMessage || "Verification failed"
+      default:
+        return "Upload a video to verify your product"
+    }
+  }
+
+  const getVerificationStatusColor = () => {
+    switch (verificationStatus) {
+      case "uploading":
+      case "processing":
+        return "text-amber-600 dark:text-amber-400"
+      case "success":
+        return "text-green-600 dark:text-green-400"
+      case "error":
+        return "text-red-600 dark:text-red-400"
+      default:
+        return "text-muted-foreground"
+    }
   }
 
   return (
@@ -275,46 +436,107 @@ export default function SellForm() {
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="images">Product Images</Label>
-            <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
-              <Input
-                id="images"
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handleImageChange}
-              />
-              <label htmlFor="images" className="cursor-pointer">
-                <Upload className="h-10 w-10 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
-                <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB</p>
-              </label>
-            </div>
+            <Label>Product Media</Label>
+            <Tabs value={mediaType} onValueChange={(value) => setMediaType(value as "image" | "video")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="image">
+                  <ImageIcon className="h-4 w-4 mr-2" />
+                  Images
+                </TabsTrigger>
+                <TabsTrigger value="video">
+                  <Video className="h-4 w-4 mr-2" />
+                  Video
+                </TabsTrigger>
+              </TabsList>
 
-            {previewUrls.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                {previewUrls.map((url, index) => (
-                  <div key={index} className="relative aspect-square rounded-md overflow-hidden">
-                    <img
-                      src={url || "/placeholder.svg"}
-                      alt={`Preview ${index + 1}`}
-                      className="object-cover w-full h-full"
-                    />
+              <TabsContent value="image" className="mt-4">
+                <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
+                  <Input
+                    id="images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleImageChange}
+                  />
+                  <label htmlFor="images" className="cursor-pointer">
+                    <Upload className="h-10 w-10 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
+                    <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB</p>
+                  </label>
+                </div>
+
+                {previewUrls.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    {previewUrls.map((url, index) => (
+                      <div key={index} className="relative aspect-square rounded-md overflow-hidden group">
+                        <img
+                          src={url || "/placeholder.svg"}
+                          alt={`Preview ${index + 1}`}
+                          className="object-cover w-full h-full"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(index)}
+                          className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                )}
+              </TabsContent>
+
+              <TabsContent value="video" className="mt-4">
+                {!videoPreviewUrl ? (
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
+                    <Input id="video" type="file" accept="video/*" className="hidden" onChange={handleVideoChange} />
+                    <label htmlFor="video" className="cursor-pointer">
+                      <Video className="h-10 w-10 mx-auto mb-2 text-gray-400" />
+                      <p className="text-sm text-muted-foreground">Click to upload a verification video</p>
+                      <p className="text-xs text-muted-foreground">MP4, MOV, WEBM up to 100MB</p>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="relative rounded-lg overflow-hidden">
+                    <video ref={videoRef} src={videoPreviewUrl} className="w-full h-auto rounded-lg" controls />
+                    <button
+                      type="button"
+                      onClick={removeVideo}
+                      className="absolute top-2 right-2 bg-black/70 text-white rounded-full p-1"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
+                {verificationStatus !== "idle" && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">Verification Status</span>
+                      <span className={`text-sm ${getVerificationStatusColor()}`}>
+                        {verificationStatus === "success"
+                          ? "Verified"
+                          : verificationStatus === "error"
+                            ? "Failed"
+                            : "Processing"}
+                      </span>
+                    </div>
+                    <Progress value={uploadProgress} className="h-2" />
+                    <p className={`text-sm mt-2 ${getVerificationStatusColor()}`}>{getVerificationStatusText()}</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
 
           <Card>
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <h3 className="font-medium">AI Verification</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Verify your product with AI to ensure it meets our guidelines
-                  </p>
+                  <h3 className="font-medium">Product Verification</h3>
+                  <p className="text-sm text-muted-foreground">Verify your product to ensure it meets our guidelines</p>
                 </div>
                 <Switch checked={useAIVerification} onCheckedChange={setUseAIVerification} />
               </div>
@@ -338,7 +560,7 @@ export default function SellForm() {
                     variant="outline"
                     className="w-full"
                     onClick={handleVerify}
-                    disabled={isVerifying || !selectedImages.length}
+                    disabled={isVerifying || (mediaType === "image" ? !selectedImages.length : !selectedVideo)}
                   >
                     {isVerifying ? (
                       <>
@@ -351,7 +573,7 @@ export default function SellForm() {
                         Verified
                       </>
                     ) : (
-                      "Verify with AI"
+                      "Verify Product"
                     )}
                   </Button>
                 </>

@@ -30,6 +30,8 @@ model Product {
   title            String
   description      String
   images           String[]
+  videoUrl         String?
+  mediaType        String?   // "image" or "video"
   startingPrice    Float
   currentPrice     Float
   startTime        DateTime  @default(now())

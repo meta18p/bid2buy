@@ -1,8 +1,9 @@
 import Link from "next/link"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { formatCurrency, calculateTimeLeft } from "@/lib/utils"
-import { Clock, Tag, User } from "lucide-react"
+import { Clock, Tag, User, Video, CheckCircle2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface ProductCardProps {
   product: any
@@ -11,18 +12,49 @@ interface ProductCardProps {
 export default function ProductCard({ product }: ProductCardProps) {
   const timeLeft = calculateTimeLeft(product.endTime)
   const isEnded = timeLeft.isEnded || product.status === "ENDED"
+  const hasVideo = product.mediaType === "video"
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden h-full flex flex-col transition-all duration-200 hover:shadow-md">
       <div className="aspect-square relative">
         <img
-          src={product.images[0] || "/placeholder.svg?height=300&width=300"}
+          src={product.images?.[0] || "/placeholder.svg?height=300&width=300"}
           alt={product.title}
           className="object-cover w-full h-full"
         />
-        {product.aiVerified && (
-          <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded text-xs">AI Verified</div>
-        )}
+
+        <div className="absolute top-2 right-2 flex flex-col gap-1">
+          {product.aiVerified && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="bg-green-500 text-white p-1 rounded-full">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Verified Product</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {hasVideo && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="bg-blue-500 text-white p-1 rounded-full">
+                    <Video className="h-4 w-4" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Video Available</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+
         {isEnded && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <Badge variant="destructive" className="text-sm">
@@ -31,7 +63,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           </div>
         )}
       </div>
-      <CardContent className="p-4">
+      <CardContent className="p-4 flex-grow">
         <Link href={`/auction/${product.id}`}>
           <h3 className="font-semibold text-lg truncate hover:underline">{product.title}</h3>
         </Link>
@@ -57,12 +89,14 @@ export default function ProductCard({ product }: ProductCardProps) {
           </div>
         </div>
       </CardContent>
-      <CardFooter className="p-4 pt-0 flex justify-between items-center">
+      <CardFooter className="p-4 pt-0 flex justify-between items-center border-t mt-auto">
         <div>
           <p className="text-sm text-muted-foreground">Current Bid</p>
           <p className="font-semibold text-lg">{formatCurrency(product.currentPrice)}</p>
         </div>
-        <div className="text-sm text-muted-foreground">{product._count?.bids || 0} bids</div>
+        <div className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{product._count?.bids || 0}</span> bids
+        </div>
       </CardFooter>
     </Card>
   )

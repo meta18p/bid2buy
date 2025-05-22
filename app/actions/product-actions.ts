@@ -25,7 +25,9 @@ export async function createProduct(formData: FormData) {
   const category = formData.get("category") as string
   const condition = formData.get("condition") as string
   const images = formData.getAll("images") as File[]
+  const video = formData.get("video") as File
   const aiVerified = formData.get("aiVerified") as string
+  const mediaType = (formData.get("mediaType") as string) || "image"
 
   if (
     !title ||
@@ -53,6 +55,19 @@ export async function createProduct(formData: FormData) {
     }
   }
 
+  // Validate that we have either images or video
+  if (mediaType === "image" && images.length === 0) {
+    return {
+      error: "Please upload at least one image",
+    }
+  }
+
+  if (mediaType === "video" && !video) {
+    return {
+      error: "Please upload a video",
+    }
+  }
+
   try {
     // Calculate end time based on duration type and value
     const endTime = new Date()
@@ -71,6 +86,14 @@ export async function createProduct(formData: FormData) {
         endTime.setDate(endTime.getDate() + durationValue) // Default to days
     }
 
+    // In a real implementation, you would upload images/video to a storage service
+    // and get back URLs to store in the database
+
+    // For demo purposes, we'll use placeholder URLs
+    const imageUrls = images.map((_, index) => `/placeholder.svg?height=600&width=600&text=Image ${index + 1}`)
+
+    const videoUrl = video ? "/placeholder.mp4" : null
+
     // Create product
     const product = await prisma.product.create({
       data: {
@@ -82,12 +105,12 @@ export async function createProduct(formData: FormData) {
         category,
         condition,
         sellerId: session.user.id,
-        images: [], // We'll update this after uploading images
+        images: imageUrls,
+        videoUrl,
+        mediaType,
         aiVerified: aiVerified === "true",
       },
     })
-
-    // TODO: Handle image uploads and update product with image URLs
 
     revalidatePath("/")
     return {
@@ -102,7 +125,14 @@ export async function createProduct(formData: FormData) {
   }
 }
 
-export async function getProducts(category?: string, search?: string) {
+export async function getProducts(
+  category?: string,
+  search?: string,
+  sort?: string,
+  minPrice?: number,
+  maxPrice?: number,
+  timeFilter?: string,
+) {
   try {
     const where: any = {
       status: "ACTIVE",
@@ -132,6 +162,67 @@ export async function getProducts(category?: string, search?: string) {
       ]
     }
 
+    // Price range filter
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      where.currentPrice = {}
+
+      if (minPrice !== undefined) {
+        where.currentPrice.gte = minPrice
+      }
+
+      if (maxPrice !== undefined) {
+        where.currentPrice.lte = maxPrice
+      }
+    }
+
+    // Time-based filters
+    if (timeFilter) {
+      const now = new Date()
+
+      if (timeFilter === "ending-soon") {
+        // Ending in the next 24 hours
+        const tomorrow = new Date(now)
+        tomorrow.setHours(now.getHours() + 24)
+
+        where.endTime = {
+          gt: now,
+          lt: tomorrow,
+        }
+      } else if (timeFilter === "today") {
+        // Ending today
+        const endOfDay = new Date(now)
+        endOfDay.setHours(23, 59, 59, 999)
+
+        where.endTime = {
+          gt: now,
+          lt: endOfDay,
+        }
+      } else if (timeFilter === "this-week") {
+        // Ending this week
+        const endOfWeek = new Date(now)
+        endOfWeek.setDate(now.getDate() + (7 - now.getDay()))
+        endOfWeek.setHours(23, 59, 59, 999)
+
+        where.endTime = {
+          gt: now,
+          lt: endOfWeek,
+        }
+      }
+    }
+
+    // Determine sorting
+    let orderBy: any = { createdAt: "desc" }
+
+    if (sort === "ending-soon") {
+      orderBy = { endTime: "asc" }
+    } else if (sort === "price-asc") {
+      orderBy = { currentPrice: "asc" }
+    } else if (sort === "price-desc") {
+      orderBy = { currentPrice: "desc" }
+    } else if (sort === "most-bids") {
+      // We'll handle this after fetching
+    }
+
     const products = await prisma.product.findMany({
       where,
       include: {
@@ -145,11 +236,19 @@ export async function getProducts(category?: string, search?: string) {
             bids: true,
           },
         },
+        bids: {
+          select: {
+            id: true,
+          },
+        },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy,
     })
+
+    // Handle "most-bids" sorting after fetching
+    if (sort === "most-bids") {
+      products.sort((a, b) => b._count.bids - a._count.bids)
+    }
 
     return products
   } catch (error) {
